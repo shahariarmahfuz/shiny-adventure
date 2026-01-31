@@ -2,10 +2,11 @@
 {% block content %}
   <h1>Message</h1>
 
+  <p class="muted">Mailbox: <code>{{ msg.mailbox_address }}</code></p>
+
   <div class="card">
     <div class="kv">
       <div class="k">ID</div><div class="v mono">{{ msg.id }}</div>
-      <div class="k">Mailbox</div><div class="v"><code>{{ msg.mailbox }}</code></div>
 
       <div class="k">Envelope From</div><div class="v mono">{{ msg.envelope_from }}</div>
       <div class="k">Envelope To</div><div class="v mono">{{ msg.envelope_to }}</div>
@@ -19,12 +20,12 @@
 
       <div class="k">Raw</div>
       <div class="v">
-        <a class="btn" href="{{ url_for('message_raw', msg_id=msg.id) }}">Download .eml</a>
+        <a class="btn" href="{{ url_for('download_raw', msg_id=msg.id) }}">Download .eml</a>
       </div>
     </div>
   </div>
 
-  <form method="post" action="{{ url_for('message_delete', msg_id=msg.id) }}" class="danger">
+  <form method="post" action="{{ url_for('delete_message', msg_id=msg.id) }}" class="danger">
     <button class="btn btn-danger" type="submit" onclick="return confirm('Delete this message?')">
       Delete message
     </button>
