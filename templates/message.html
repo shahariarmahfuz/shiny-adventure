@@ -20,14 +20,62 @@
 
       <div class="k">Raw</div>
       <div class="v">
-        <a class="btn" href="{{ url_for('download_raw', msg_id=msg.id) }}">Download .eml</a>
+        <a class="btn" href="{{ url_for('download_raw', msg_id=msg.id) }}"><i class="ri-download-2-line"></i> Download .eml</a>
       </div>
     </div>
   </div>
 
-  <form method="post" action="{{ url_for('delete_message', msg_id=msg.id) }}" class="danger">
-    <button class="btn btn-danger" type="submit" onclick="return confirm('Delete this message?')">
-      Delete message
+  <form method="post" action="{{ url_for('delete_message', msg_id=msg.id) }}" class="danger" id="delete-message-form">
+    <button class="btn btn-danger" type="button" data-confirm="delete-message">
+      <i class="ri-delete-bin-6-line"></i> Delete message
     </button>
   </form>
+
+  <div class="modal" id="confirm-modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-icon"><i class="ri-alert-line"></i></div>
+      <h3 id="modal-title">Delete message?</h3>
+      <p id="modal-message" class="muted">This will permanently delete the message from the server.</p>
+      <div class="modal-actions">
+        <button class="btn" type="button" data-close-modal>Cancel</button>
+        <button class="btn btn-danger" type="button" id="modal-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const modal = document.getElementById("confirm-modal");
+    const modalConfirm = document.getElementById("modal-confirm");
+    const closeModalButtons = modal.querySelectorAll("[data-close-modal]");
+    let submitTarget = null;
+
+    function openModal() {
+      submitTarget = document.getElementById("delete-message-form");
+      modal.setAttribute("aria-hidden", "false");
+      modal.classList.add("open");
+    }
+
+    function closeModal() {
+      modal.setAttribute("aria-hidden", "true");
+      modal.classList.remove("open");
+      submitTarget = null;
+    }
+
+    document.querySelectorAll("[data-confirm]").forEach((btn) => {
+      btn.addEventListener("click", openModal);
+    });
+
+    modalConfirm.addEventListener("click", () => {
+      if (submitTarget) {
+        submitTarget.submit();
+      }
+    });
+
+    closeModalButtons.forEach((btn) => btn.addEventListener("click", closeModal));
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) {
+        closeModal();
+      }
+    });
+  </script>
 {% endblock %}
