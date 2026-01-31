@@ -4,12 +4,18 @@ import threading
 import uuid
 import asyncio
 import secrets
+import string
 from datetime import datetime, timezone
+from functools import wraps
+from urllib.parse import urlparse, parse_qs, unquote
+
+import numpy as np
+import cv2
+import pyotp
+import libsql_client
 from email import policy
 from email.parser import BytesParser
-from functools import wraps
 
-import libsql_client
 from flask import (
     Flask,
     abort,
@@ -20,43 +26,37 @@ from flask import (
     url_for,
     session,
     flash,
+    jsonify,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
 # ============================================================
-# DIRECT CONFIG (NO ENV) — সবকিছু সরাসরি
+# DIRECT CONFIG (NO ENV)
 # ============================================================
 
-# Turso DB
-TURSO_DB_URL = "https://dash-tolaramstudent.aws-ap-south-1.turso.io"
-TURSO_AUTH_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njk4NzEyOTQsImlkIjoiZmZhYTFlZWUtOTE2OC00NmZjLWJjYmYtOTRkNTM2NmRmZjIwIiwicmlkIjoiMDlmZGRjYmItOGRiMC00NDY0LTliMDctM2I5OWJlMjhlZmFmIn0.m4PAj1Qkamoo_QBMILJO04jGaFbRJdHaQ9nLkxuzIvPWylHH9OK1DrLJcjkPEXatttyuv9B73K13pmSYGjX7Aw"  # <-- আপনার Turso JWT token বসান
+TURSO_DB_URL = "https://test-tolaramstudent.aws-ap-south-1.turso.io"
+TURSO_AUTH_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njk4NzI0NTQsImlkIjoiMzE5ZmZkZDktYmJlZC00NzUzLThjNDgtY2NhZmU0MWI1NmQ1IiwicmlkIjoiZjM3NDlmY2UtODY4NC00NDY4LWE4ZDgtOTExMzIzYzg4ZWRlIn0.f1jDCYidUaBotL0TxC_BwKdZjDE_GXa68FQkGhzdLkQuZu0agUmFbcOK_rJXpSDX9U3dJTMs36uMsRNOL-yzDw"  # <-- আপনার Turso JWT
 
-# Worker -> Backend shared secret
-INGEST_TOKEN = "CHANGE_THIS_TO_LONG_RANDOM_SECRET"
+INGEST_TOKEN = "CHANGE_THIS_TO_LONG_RANDOM_SECRET"  # <-- Worker -> Backend shared secret
 
-# Your email domain (UI তে দেখানোর জন্য)
-EMAIL_DOMAIN = "xneko.xyz"  # <-- আপনার Cloudflare domain দিন (example: example.com)
+EMAIL_DOMAIN = "xneko.xyz"  # <-- আপনার Cloudflare domain (example.com)
 
-# Mailbox local-part format
-MAILBOX_REGEX = r"^[a-zA-Z0-9._+-]{1,64}$"
+MAILBOX_REGEX = r"^[a-z0-9]{6,20}$"  # local-part random হবে
+MAILBOX_RANDOM_LEN = 10
 
-# Random mailbox settings
-MAILBOX_RANDOM_LEN = 10  # 10 chars random local part
+# One-time password policy
+GENERATED_PASSWORD_LEN = 18  # strong
 
-# Flask session secret (direct, no env)
-# production এ এটা change করা ভাল; কিন্তু আপনি বলেছেন direct থাকবে
 FLASK_SECRET_KEY = "CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_VALUE"
-
-# Optional: if you want to disable signup later
 ALLOW_SIGNUP = True
 
-# Optional: cap messages for a mailbox (0=off)
+# Optional: mailbox message cap (0=off)
 MAX_MESSAGES_PER_MAILBOX = 0
 
 
 # ============================================================
-# Async runner (Turso libsql-client needs running event loop)
+# Async executor (libsql-client needs running event loop)
 # ============================================================
 
 class AsyncExecutor:
@@ -101,6 +101,24 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
+-- gmail linked account (the "virtual email" record)
+CREATE TABLE IF NOT EXISTS accounts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  gmail TEXT NOT NULL,
+  mailbox_id TEXT NOT NULL UNIQUE,
+  local_part TEXT NOT NULL UNIQUE,
+  generated_password TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+
+  totp_secret TEXT,
+  totp_issuer TEXT,
+  totp_label TEXT,
+
+  FOREIGN KEY(user_id) REFERENCES users(id),
+  FOREIGN KEY(mailbox_id) REFERENCES mailboxes(id)
+);
+
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   mailbox_id TEXT NOT NULL,
@@ -117,11 +135,11 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mailboxes_user ON mailboxes(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_mailbox_received ON messages(mailbox_id, received_at DESC);
 """
 
 async def _db_init():
-    # libsql-client supports executing multiple statements one by one; safest:
     for stmt in [s.strip() for s in SCHEMA_SQL.split(";")]:
         if stmt:
             await CLIENT.execute(stmt + ";")
@@ -130,18 +148,19 @@ EXEC.run(_db_init())
 
 
 # ============================================================
-# App
+# Flask app
 # ============================================================
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 
-SESSION_COOKIE = "session"
-
 
 # ============================================================
 # Helpers
 # ============================================================
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 def bearer_token(req) -> str:
     auth = req.headers.get("authorization", "") or ""
@@ -149,16 +168,47 @@ def bearer_token(req) -> str:
         return auth[len("Bearer "):].strip()
     return ""
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def normalize_user_email(email: str) -> str:
+    e = (email or "").strip().lower()
+    if not e or "@" not in e or len(e) > 200:
+        abort(400, description="Invalid email")
+    return e
 
-def validate_mailbox_local(local_part: str) -> str:
-    local = (local_part or "").strip().lower()
-    if not local:
-        abort(400, description="Missing mailbox")
-    if not re.match(MAILBOX_REGEX, local):
-        abort(400, description="Invalid mailbox")
-    return local
+def normalize_gmail(email: str) -> str:
+    e = normalize_user_email(email)
+    # optional: enforce gmail
+    # if not (e.endswith("@gmail.com") or e.endswith("@googlemail.com")):
+    #     abort(400, description="Only Gmail allowed")
+    return e
+
+def current_user_id() -> str | None:
+    return session.get("uid")
+
+def login_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user_id():
+            return redirect(url_for("login"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+async def _db_execute(sql: str, args=()):
+    return await CLIENT.execute(sql, args)
+
+def db_execute(sql: str, args=()):
+    return EXEC.run(_db_execute(sql, args))
+
+def db_query(sql: str, args=()):
+    return EXEC.run(_db_execute(sql, args))
+
+def to_bytes(x):
+    if x is None:
+        return b""
+    if isinstance(x, bytes):
+        return x
+    if isinstance(x, memoryview):
+        return x.tobytes()
+    return bytes(x)
 
 def parse_received_at(value: str) -> str:
     v = (value or "").strip()
@@ -185,44 +235,105 @@ def maybe_parse_headers(raw_eml: bytes):
         pass
     return parsed_from, parsed_to, parsed_date
 
-async def _db_execute(sql: str, args=()):
-    return await CLIENT.execute(sql, args)
 
-def db_execute(sql: str, args=()):
-    return EXEC.run(_db_execute(sql, args))
+# ============================================================
+# Random generators
+# ============================================================
 
-def db_query(sql: str, args=()):
-    return EXEC.run(_db_execute(sql, args))
+def random_local_part(length: int) -> str:
+    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
-def to_bytes(x):
-    if x is None:
-        return b""
-    if isinstance(x, bytes):
-        return x
-    if isinstance(x, memoryview):
-        return x.tobytes()
-    return bytes(x)
+def strong_password(length: int) -> str:
+    # strong: mix of sets, guaranteed at least 1 from each
+    if length < 12:
+        length = 12
 
-def current_user_id() -> str | None:
-    return session.get("uid")
+    lowers = string.ascii_lowercase
+    uppers = string.ascii_uppercase
+    digits = string.digits
+    symbols = "!@#$%^&*()-_=+[]{};:,.?/"
 
-def login_required(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if not current_user_id():
-            return redirect(url_for("login"))
-        return fn(*args, **kwargs)
-    return wrapper
-
-def normalize_user_email(email: str) -> str:
-    e = (email or "").strip().lower()
-    if not e or "@" not in e or len(e) > 200:
-        abort(400, description="Invalid email")
-    return e
+    # ensure each category at least once
+    core = [
+        secrets.choice(lowers),
+        secrets.choice(uppers),
+        secrets.choice(digits),
+        secrets.choice(symbols),
+    ]
+    all_chars = lowers + uppers + digits + symbols
+    core += [secrets.choice(all_chars) for _ in range(length - len(core))]
+    secrets.SystemRandom().shuffle(core)
+    return "".join(core)
 
 
 # ============================================================
-# Auth
+# QR / TOTP parsing
+# ============================================================
+
+def parse_otpauth_uri(uri: str) -> dict:
+    """
+    Returns dict: {secret, issuer, label}
+    """
+    u = uri.strip()
+    if not u.lower().startswith("otpauth://"):
+        raise ValueError("Not an otpauth URI")
+
+    parsed = urlparse(u)
+    if parsed.scheme.lower() != "otpauth":
+        raise ValueError("Invalid otpauth scheme")
+
+    # otpauth://totp/LABEL?secret=...&issuer=...
+    label = unquote(parsed.path.lstrip("/")) if parsed.path else ""
+    qs = parse_qs(parsed.query)
+
+    secret = (qs.get("secret") or [""])[0].strip().replace(" ", "")
+    issuer = (qs.get("issuer") or [""])[0].strip()
+
+    if not secret:
+        raise ValueError("Missing secret in otpauth")
+
+    return {"secret": secret, "issuer": issuer or None, "label": label or None}
+
+def decode_qr_from_image_bytes(image_bytes: bytes) -> str | None:
+    """
+    Tries to detect & decode QR in image (even if there are other objects).
+    Returns decoded text or None.
+    """
+    if not image_bytes:
+        return None
+
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+
+    det = cv2.QRCodeDetector()
+
+    # try multi first
+    ok, decoded_infos, points, _ = det.detectAndDecodeMulti(img)
+    if ok and decoded_infos:
+        for s in decoded_infos:
+            if s and s.strip():
+                return s.strip()
+
+    # fallback single
+    s, pts, _ = det.detectAndDecode(img)
+    if s and s.strip():
+        return s.strip()
+
+    return None
+
+def totp_now_and_remaining(secret: str) -> tuple[str, int]:
+    # pyotp expects base32 secret
+    totp = pyotp.TOTP(secret)
+    code = totp.now()
+    remaining = totp.interval - (datetime.now(timezone.utc).timestamp() % totp.interval)
+    return code, int(remaining)
+
+
+# ============================================================
+# Auth Routes
 # ============================================================
 
 @app.get("/signup")
@@ -297,7 +408,7 @@ def logout():
 
 
 # ============================================================
-# UI
+# Dashboard + Account creation
 # ============================================================
 
 @app.get("/")
@@ -310,73 +421,219 @@ def root():
 @login_required
 def dashboard():
     uid = current_user_id()
-
     rs = db_query(
         """
-        SELECT m.id, m.local_part, m.created_at,
-               (SELECT COUNT(*) FROM messages msg WHERE msg.mailbox_id = m.id) AS msg_count,
-               (SELECT MAX(received_at) FROM messages msg WHERE msg.mailbox_id = m.id) AS last_received
-        FROM mailboxes m
-        WHERE m.user_id = ?
-        ORDER BY m.created_at DESC
+        SELECT a.id, a.gmail, a.local_part, a.generated_password, a.created_at,
+               a.totp_secret,
+               (SELECT COUNT(*) FROM messages m WHERE m.mailbox_id = a.mailbox_id) AS msg_count,
+               (SELECT MAX(received_at) FROM messages m WHERE m.mailbox_id = a.mailbox_id) AS last_received
+        FROM accounts a
+        WHERE a.user_id = ?
+        ORDER BY a.created_at DESC
         """,
         (uid,),
     )
 
-    mailboxes = []
+    accounts = []
     for r in (rs.rows or []):
-        mailboxes.append({
+        accounts.append({
             "id": r[0],
-            "local_part": r[1],
-            "address": f"{r[1]}@{EMAIL_DOMAIN}",
-            "created_at": r[2],
-            "msg_count": int(r[3] or 0),
-            "last_received": r[4],
+            "gmail": r[1],
+            "email": f"{r[2]}@{EMAIL_DOMAIN}",
+            "local_part": r[2],
+            "generated_password": r[3],
+            "created_at": r[4],
+            "has_totp": bool(r[5]),
+            "msg_count": int(r[6] or 0),
+            "last_received": r[7],
         })
 
-    return render_template("dashboard.html", mailboxes=mailboxes, user_email=session.get("email"))
+    return render_template("dashboard.html", accounts=accounts, domain=EMAIL_DOMAIN)
 
-def _random_local_part(n: int) -> str:
-    # URL-safe base32-ish (letters+digits), then trim
-    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-    return "".join(secrets.choice(alphabet) for _ in range(n))
-
-@app.post("/mailboxes/create")
+@app.post("/accounts/create")
 @login_required
-def create_mailbox():
+def create_account():
     uid = current_user_id()
+    gmail = normalize_gmail(request.form.get("gmail", ""))
 
-    # generate unique random local part
-    for _ in range(20):
-        local = _random_local_part(MAILBOX_RANDOM_LEN)
+    # create mailbox + account with unique local_part
+    gen_pass = strong_password(GENERATED_PASSWORD_LEN)
+
+    for _ in range(30):
+        local = random_local_part(MAILBOX_RANDOM_LEN)
+        if not re.match(MAILBOX_REGEX, local):
+            continue
+
+        mailbox_id = str(uuid.uuid4())
+        account_id = str(uuid.uuid4())
+
         try:
             db_execute(
                 "INSERT INTO mailboxes (id, user_id, local_part, created_at) VALUES (?, ?, ?, ?)",
-                (str(uuid.uuid4()), uid, local, now_iso()),
+                (mailbox_id, uid, local, now_iso()),
             )
-            flash(f"Created: {local}@{EMAIL_DOMAIN}", "ok")
-            return redirect(url_for("dashboard"))
+            db_execute(
+                """
+                INSERT INTO accounts
+                (id, user_id, gmail, mailbox_id, local_part, generated_password, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (account_id, uid, gmail, mailbox_id, local, gen_pass, now_iso()),
+            )
+            flash("New email created successfully. Copy the details from the account page.", "ok")
+            return redirect(url_for("account_view", account_id=account_id))
         except Exception:
+            # collision: local_part unique
+            # try again with new random
             continue
 
-    flash("Failed to create mailbox. Try again.", "error")
+    flash("Failed to create new email. Try again.", "error")
     return redirect(url_for("dashboard"))
 
-@app.post("/mailboxes/<mailbox_id>/delete")
-@login_required
-def delete_mailbox(mailbox_id: str):
-    uid = current_user_id()
 
-    # Ensure ownership
-    rs = db_query("SELECT id FROM mailboxes WHERE id = ? AND user_id = ? LIMIT 1", (mailbox_id, uid))
+# ============================================================
+# Account detail + Authenticator setup
+# ============================================================
+
+def get_account_owned(uid: str, account_id: str) -> dict:
+    rs = db_query(
+        """
+        SELECT id, user_id, gmail, mailbox_id, local_part, generated_password, created_at,
+               totp_secret, totp_issuer, totp_label
+        FROM accounts
+        WHERE id = ? AND user_id = ?
+        LIMIT 1
+        """,
+        (account_id, uid),
+    )
     if not rs.rows:
         abort(404)
+    r = rs.rows[0]
+    return {
+        "id": r[0],
+        "user_id": r[1],
+        "gmail": r[2],
+        "mailbox_id": r[3],
+        "local_part": r[4],
+        "email": f"{r[4]}@{EMAIL_DOMAIN}",
+        "generated_password": r[5],
+        "created_at": r[6],
+        "totp_secret": r[7],
+        "totp_issuer": r[8],
+        "totp_label": r[9],
+    }
 
-    # delete messages first
-    db_execute("DELETE FROM messages WHERE mailbox_id = ?", (mailbox_id,))
-    db_execute("DELETE FROM mailboxes WHERE id = ?", (mailbox_id,))
-    flash("Mailbox deleted.", "ok")
+@app.get("/accounts/<account_id>")
+@login_required
+def account_view(account_id: str):
+    uid = current_user_id()
+    acct = get_account_owned(uid, account_id)
+
+    # initial code (server render)
+    code = None
+    remaining = None
+    if acct["totp_secret"]:
+        try:
+            code, remaining = totp_now_and_remaining(acct["totp_secret"])
+        except Exception:
+            code, remaining = None, None
+
+    return render_template(
+        "account.html",
+        account=acct,
+        code=code,
+        remaining=remaining,
+    )
+
+@app.post("/accounts/<account_id>/authenticator")
+@login_required
+def account_set_authenticator(account_id: str):
+    uid = current_user_id()
+    acct = get_account_owned(uid, account_id)
+
+    secret_input = (request.form.get("secret") or "").strip().replace(" ", "")
+    file = request.files.get("qr_image")
+
+    extracted = None
+    issuer = None
+    label = None
+
+    if file and file.filename:
+        img_bytes = file.read()
+        decoded = decode_qr_from_image_bytes(img_bytes)
+        if not decoded:
+            flash("QR code not detected in the image. Try a clearer screenshot.", "error")
+            return redirect(url_for("account_view", account_id=account_id))
+
+        # decoded could be otpauth URI or plain secret
+        try:
+            data = parse_otpauth_uri(decoded)
+            extracted = data["secret"]
+            issuer = data["issuer"]
+            label = data["label"]
+        except Exception:
+            # fallback: treat as secret
+            extracted = decoded.strip().replace(" ", "")
+
+    elif secret_input:
+        extracted = secret_input
+
+    else:
+        flash("Please upload a QR image or paste a secret.", "error")
+        return redirect(url_for("account_view", account_id=account_id))
+
+    # validate secret by attempting to generate code
+    try:
+        _ = pyotp.TOTP(extracted).now()
+    except Exception:
+        flash("Invalid TOTP secret. Please try again.", "error")
+        return redirect(url_for("account_view", account_id=account_id))
+
+    db_execute(
+        """
+        UPDATE accounts
+        SET totp_secret = ?, totp_issuer = ?, totp_label = ?
+        WHERE id = ? AND user_id = ?
+        """,
+        (extracted, issuer, label, account_id, uid),
+    )
+
+    flash("Authenticator set successfully. Current code will update in real-time.", "ok")
+    return redirect(url_for("account_view", account_id=account_id))
+
+@app.get("/accounts/<account_id>/totp.json")
+@login_required
+def account_totp_json(account_id: str):
+    uid = current_user_id()
+    acct = get_account_owned(uid, account_id)
+
+    if not acct["totp_secret"]:
+        return jsonify({"ok": True, "enabled": False})
+
+    try:
+        code, remaining = totp_now_and_remaining(acct["totp_secret"])
+        return jsonify({"ok": True, "enabled": True, "code": code, "remaining": remaining})
+    except Exception:
+        return jsonify({"ok": False, "enabled": True, "error": "totp_error"}), 500
+
+@app.post("/accounts/<account_id>/delete")
+@login_required
+def account_delete(account_id: str):
+    uid = current_user_id()
+    acct = get_account_owned(uid, account_id)
+
+    # delete messages -> account -> mailbox
+    db_execute("DELETE FROM messages WHERE mailbox_id = ?", (acct["mailbox_id"],))
+    db_execute("DELETE FROM accounts WHERE id = ? AND user_id = ?", (account_id, uid))
+    db_execute("DELETE FROM mailboxes WHERE id = ?", (acct["mailbox_id"],))
+
+    flash("Account deleted.", "ok")
     return redirect(url_for("dashboard"))
+
+
+# ============================================================
+# Inbox views (messages per mailbox)
+# ============================================================
 
 @app.get("/mailboxes/<mailbox_id>")
 @login_required
@@ -385,19 +642,21 @@ def view_mailbox(mailbox_id: str):
     limit = min(max(int(request.args.get("limit", "50")), 1), 200)
     offset = max(int(request.args.get("offset", "0")), 0)
 
-    mrs = db_query(
-        "SELECT id, local_part, created_at FROM mailboxes WHERE id = ? AND user_id = ? LIMIT 1",
+    # ownership via accounts join
+    ars = db_query(
+        """
+        SELECT a.id, a.local_part
+        FROM accounts a
+        WHERE a.mailbox_id = ? AND a.user_id = ?
+        LIMIT 1
+        """,
         (mailbox_id, uid),
     )
-    if not mrs.rows:
+    if not ars.rows:
         abort(404)
 
-    mailbox = {
-        "id": mrs.rows[0][0],
-        "local_part": mrs.rows[0][1],
-        "address": f"{mrs.rows[0][1]}@{EMAIL_DOMAIN}",
-        "created_at": mrs.rows[0][2],
-    }
+    account_id = ars.rows[0][0]
+    local_part = ars.rows[0][1]
 
     total_rs = db_query("SELECT COUNT(*) FROM messages WHERE mailbox_id = ?", (mailbox_id,))
     total = int(total_rs.rows[0][0]) if total_rs.rows else 0
@@ -423,6 +682,12 @@ def view_mailbox(mailbox_id: str):
             "raw_size": r[4],
         })
 
+    mailbox = {
+        "id": mailbox_id,
+        "address": f"{local_part}@{EMAIL_DOMAIN}",
+        "account_id": account_id,
+    }
+
     return render_template(
         "mailbox.html",
         mailbox=mailbox,
@@ -441,10 +706,10 @@ def view_message(msg_id: str):
         """
         SELECT msg.id, msg.mailbox_id, msg.envelope_from, msg.envelope_to, msg.subject, msg.received_at,
                msg.raw_size, msg.parsed_from, msg.parsed_to, msg.parsed_date,
-               m.local_part
+               a.local_part, a.id AS account_id
         FROM messages msg
-        JOIN mailboxes m ON m.id = msg.mailbox_id
-        WHERE msg.id = ? AND m.user_id = ?
+        JOIN accounts a ON a.mailbox_id = msg.mailbox_id
+        WHERE msg.id = ? AND a.user_id = ?
         LIMIT 1
         """,
         (msg_id, uid),
@@ -465,6 +730,7 @@ def view_message(msg_id: str):
         "parsed_to": r[8],
         "parsed_date": r[9],
         "mailbox_address": f"{r[10]}@{EMAIL_DOMAIN}",
+        "account_id": r[11],
     }
 
     return render_template("message.html", msg=msg)
@@ -476,10 +742,10 @@ def download_raw(msg_id: str):
 
     rs = db_query(
         """
-        SELECT m.local_part, msg.raw_eml
+        SELECT a.local_part, msg.raw_eml
         FROM messages msg
-        JOIN mailboxes m ON m.id = msg.mailbox_id
-        WHERE msg.id = ? AND m.user_id = ?
+        JOIN accounts a ON a.mailbox_id = msg.mailbox_id
+        WHERE msg.id = ? AND a.user_id = ?
         LIMIT 1
         """,
         (msg_id, uid),
@@ -505,33 +771,34 @@ def delete_message(msg_id: str):
         """
         SELECT msg.mailbox_id
         FROM messages msg
-        JOIN mailboxes m ON m.id = msg.mailbox_id
-        WHERE msg.id = ? AND m.user_id = ?
+        JOIN accounts a ON a.mailbox_id = msg.mailbox_id
+        WHERE msg.id = ? AND a.user_id = ?
         LIMIT 1
         """,
         (msg_id, uid),
     )
     if not rs.rows:
         abort(404)
-
     mailbox_id = rs.rows[0][0]
+
     db_execute("DELETE FROM messages WHERE id = ?", (msg_id,))
     flash("Message deleted.", "ok")
     return redirect(url_for("view_mailbox", mailbox_id=mailbox_id))
 
 
 # ============================================================
-# Ingest (Cloudflare Worker -> POST raw EML here)
+# Ingest endpoint (Cloudflare Worker -> POST raw EML here)
 # ============================================================
 
 @app.post("/ingest")
 def ingest():
-    # Protect endpoint
     if bearer_token(request) != INGEST_TOKEN:
         abort(401)
 
-    # Worker sends local-part in X-Mailbox
-    mailbox_local = validate_mailbox_local(request.headers.get("x-mailbox", ""))
+    mailbox_local = (request.headers.get("x-mailbox", "") or "").strip().lower()
+    if not mailbox_local:
+        return {"ok": True, "stored": False, "reason": "missing_mailbox"}
+
     envelope_from = (request.headers.get("x-envelope-from") or "").strip() or "unknown"
     envelope_to = (request.headers.get("x-envelope-to") or "").strip() or "unknown"
     subject = (request.headers.get("x-subject") or "").strip() or None
@@ -542,10 +809,9 @@ def ingest():
     if not raw_size:
         raw_size = len(raw_eml)
 
-    # Only store if mailbox exists
-    mrs = db_query("SELECT id FROM mailboxes WHERE local_part = ? LIMIT 1", (mailbox_local,))
+    # Only store if mailbox exists (created by user)
+    mrs = db_query("SELECT mailbox_id FROM accounts WHERE local_part = ? LIMIT 1", (mailbox_local,))
     if not mrs.rows:
-        # mailbox not created by any user => ignore (you can change to 404/400 if you want)
         return {"ok": True, "stored": False, "reason": "mailbox_not_found"}
 
     mailbox_id = mrs.rows[0][0]
@@ -573,7 +839,6 @@ def ingest():
         ),
     )
 
-    # Optional cap per mailbox
     if MAX_MESSAGES_PER_MAILBOX and MAX_MESSAGES_PER_MAILBOX > 0:
         crs = db_query("SELECT COUNT(*) FROM messages WHERE mailbox_id = ?", (mailbox_id,))
         total = int(crs.rows[0][0]) if crs.rows else 0
@@ -587,7 +852,6 @@ def ingest():
                 db_execute("DELETE FROM messages WHERE id = ?", (r[0],))
 
     return {"ok": True, "stored": True, "id": msg_id}
-
 
 @app.get("/health")
 def health():
