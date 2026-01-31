@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block content %}
+  <h1>Dashboard</h1>
+
+  <div class="row">
+    <form method="post" action="{{ url_for('create_mailbox') }}">
+      <button class="btn btn-primary" type="submit">➕ Create new email</button>
+    </form>
+  </div>
+
+  {% if not mailboxes %}
+    <p class="muted">No email addresses yet. Click “Create new email”.</p>
+  {% else %}
+    <div class="card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Messages</th>
+            <th>Last received</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in mailboxes %}
+            <tr>
+              <td class="mono">
+                <a href="{{ url_for('view_mailbox', mailbox_id=m.id) }}">{{ m.address }}</a>
+              </td>
+              <td>{{ m.msg_count }}</td>
+              <td><code>{{ m.last_received or "-" }}</code></td>
+              <td>
+                <form method="post" action="{{ url_for('delete_mailbox', mailbox_id=m.id) }}" style="display:inline;">
+                  <button class="btn btn-danger" type="submit" onclick="return confirm('Delete this mailbox and all messages?')">
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endblock %}
