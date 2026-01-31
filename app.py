@@ -1,4 +1,3 @@
-import base64
 import os
 import re
 import threading
@@ -25,10 +24,10 @@ from flask import (
 
 # Turso DB
 TURSO_DB_URL = "https://test-tolaramstudent.aws-ap-south-1.turso.io"
-TURSO_AUTH_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njk4Njg2MTcsImlkIjoiNjdiNjgwYjItNmY4NC00ZmRjLTgxZjItMmNkYWQzMmQ2OGVlIiwicmlkIjoiYTc4MTBmNGItNDk1Yy00MDRhLTg0ZTAtOGExZTZhNmRlZjE5In0.5FaYEiGbAUt0EmND11WUfhRFIUvkC3WMoakpRT4RqCkrOIty3SwkiesX-WTDYxmT0nQIr9RHBubQaWb5xZquCg"  # <-- এখানে আপনার JWT টোকেন বসান
+TURSO_AUTH_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njk4Njg2MTcsImlkIjoiNjdiNjgwYjItNmY4NC00ZmRjLTgxZjItMmNkYWQzMmQ2OGVlIiwicmlkIjoiYTc4MTBmNGItNDk1Yy00MDRhLTg0ZTAtOGExZTZhNmRlZjE5In0.5FaYEiGbAUt0EmND11WUfhRFIUvkC3WMoakpRT4RqCkrOIty3SwkiesX-WTDYxmT0nQIr9RHBubQaWb5xZquCg"  # <-- এখানে আপনার Turso JWT বসান
 
 # Ingest Security (Worker -> Railway)
-# Worker যেই token দিয়ে Authorization header পাঠায়, একই token এখানে বসান
+# Worker যেই টোকেন দিয়ে Authorization header পাঠায়, একই টোকেন এখানে বসান
 INGEST_TOKEN = "CHANGE_THIS_TO_LONG_RANDOM_SECRET"
 
 # Optional UI protection (login ছাড়াই)
@@ -41,9 +40,8 @@ MAILBOX_REGEX = r"^[a-zA-Z0-9._+-]{1,100}$"
 # Optional: DB বড় হয়ে গেলে পুরোনো msg delete (0 = off)
 MAX_MESSAGES = 0
 
-
 # ============================================================
-# Async runner (Flask sync হলেও DB calls async)
+# Async runner (Flask sync হলেও Turso client async-loop চায়)
 # ============================================================
 
 class AsyncExecutor:
@@ -56,14 +54,18 @@ class AsyncExecutor:
         asyncio.set_event_loop(self._loop)
         self._loop.run_forever()
 
-    def run(self, coro):
+    def run(self, coro, timeout=30):
         fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return fut.result(timeout=30)
+        return fut.result(timeout=timeout)
 
 EXEC = AsyncExecutor()
 
-# Single client per process (Gunicorn worker)
-CLIENT = EXEC.run(libsql_client.create_client(url=TURSO_DB_URL, auth_token=TURSO_AUTH_TOKEN))
+# IMPORTANT FIX:
+# create_client() কে event loop-এর ভিতরে call করতে হবে, নইলে "no running event loop" হবে।
+async def _init_client():
+    return libsql_client.create_client(url=TURSO_DB_URL, auth_token=TURSO_AUTH_TOKEN)
+
+CLIENT = EXEC.run(_init_client())
 
 # ============================================================
 # DB Schema init
@@ -88,15 +90,12 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE_INDEX_1 = "CREATE INDEX IF NOT EXISTS idx_messages_mailbox_received ON messages(mailbox, received_at DESC);"
 CREATE_INDEX_2 = "CREATE INDEX IF NOT EXISTS idx_messages_received ON messages(received_at DESC);"
 
+async def _db_init():
+    await CLIENT.execute(CREATE_TABLE_SQL)
+    await CLIENT.execute(CREATE_INDEX_1)
+    await CLIENT.execute(CREATE_INDEX_2)
 
-def db_init():
-    EXEC.run(CLIENT.execute(CREATE_TABLE_SQL))
-    EXEC.run(CLIENT.execute(CREATE_INDEX_1))
-    EXEC.run(CLIENT.execute(CREATE_INDEX_2))
-
-
-db_init()
-
+EXEC.run(_db_init())
 
 # ============================================================
 # Helpers
@@ -105,13 +104,11 @@ db_init()
 app = Flask(__name__)
 SESSION_COOKIE = "inbox_ui_ok"
 
-
 def bearer_token(req) -> str:
     auth = req.headers.get("authorization", "") or ""
     if auth.startswith("Bearer "):
-        return auth[len("Bearer "):].strip()
+        return auth[len("Bearer ") :].strip()
     return ""
-
 
 def validate_mailbox(mailbox: str) -> str:
     mailbox = (mailbox or "").strip().lower()
@@ -121,9 +118,7 @@ def validate_mailbox(mailbox: str) -> str:
         abort(400, description="Invalid mailbox")
     return mailbox
 
-
 def parse_received_at(value: str) -> str:
-    # DB stores ISO8601 string (text)
     v = (value or "").strip()
     if not v:
         return datetime.now(timezone.utc).isoformat()
@@ -134,7 +129,6 @@ def parse_received_at(value: str) -> str:
         return dt.isoformat()
     except Exception:
         return datetime.now(timezone.utc).isoformat()
-
 
 def maybe_parse_headers(raw_eml: bytes):
     parsed_from = None
@@ -149,23 +143,23 @@ def maybe_parse_headers(raw_eml: bytes):
         pass
     return parsed_from, parsed_to, parsed_date
 
+async def _db_execute(sql: str, args=()):
+    return await CLIENT.execute(sql, args)
 
-def db_execute(sql: str, args=None):
-    if args is None:
-        args = ()
-    return EXEC.run(CLIENT.execute(sql, args))
+def db_execute(sql: str, args=()):
+    return EXEC.run(_db_execute(sql, args))
 
+def db_query(sql: str, args=()):
+    return EXEC.run(_db_execute(sql, args))
 
-def db_query(sql: str, args=None):
-    if args is None:
-        args = ()
-    return EXEC.run(CLIENT.execute(sql, args))
-
-
-def bytes_to_blob(b: bytes) -> bytes:
-    # libsql_client supports passing bytes for BLOB
-    return b
-
+def to_bytes(x):
+    if x is None:
+        return b""
+    if isinstance(x, bytes):
+        return x
+    if isinstance(x, memoryview):
+        return x.tobytes()
+    return bytes(x)
 
 # ============================================================
 # UI protection (optional)
@@ -190,7 +184,6 @@ def protect_ui():
 
     abort(401, description="UI token required. Open any page with ?ui_token=YOUR_UI_TOKEN once.")
 
-
 # ============================================================
 # Routes
 # ============================================================
@@ -199,11 +192,9 @@ def protect_ui():
 def health():
     return {"status": "ok"}
 
-
 @app.get("/")
 def root():
     return redirect(url_for("mailboxes"))
-
 
 # -------------------------
 # Ingest endpoint
@@ -244,7 +235,7 @@ def ingest():
             subject,
             received_at,
             raw_size,
-            bytes_to_blob(raw_eml),
+            raw_eml,
             parsed_from,
             parsed_to,
             parsed_date,
@@ -252,17 +243,15 @@ def ingest():
     )
 
     if MAX_MESSAGES and MAX_MESSAGES > 0:
-        rs = db_query("SELECT COUNT(*) AS c FROM messages")
-        total = rs.rows[0][0] if rs.rows else 0
+        rs = db_query("SELECT COUNT(*) FROM messages")
+        total = int(rs.rows[0][0]) if rs.rows else 0
         if total > MAX_MESSAGES:
             over = total - MAX_MESSAGES
             old = db_query("SELECT id FROM messages ORDER BY received_at ASC LIMIT ?", (over,))
-            old_ids = [r[0] for r in old.rows] if old.rows else []
-            for oid in old_ids:
-                db_execute("DELETE FROM messages WHERE id = ?", (oid,))
+            for r in (old.rows or []):
+                db_execute("DELETE FROM messages WHERE id = ?", (r[0],))
 
     return {"ok": True, "id": msg_id}
-
 
 # -------------------------
 # UI pages
@@ -285,7 +274,6 @@ def mailboxes():
     ]
     return render_template("mailboxes.html", mailboxes=mailboxes_list)
 
-
 @app.get("/mailbox/<mailbox>")
 def mailbox_messages(mailbox: str):
     mailbox = validate_mailbox(mailbox)
@@ -294,7 +282,7 @@ def mailbox_messages(mailbox: str):
     offset = max(int(request.args.get("offset", "0")), 0)
 
     total_rs = db_query("SELECT COUNT(*) FROM messages WHERE mailbox = ?", (mailbox,))
-    total = total_rs.rows[0][0] if total_rs.rows else 0
+    total = int(total_rs.rows[0][0]) if total_rs.rows else 0
 
     rs = db_query(
         """
@@ -325,16 +313,8 @@ def mailbox_messages(mailbox: str):
         messages=messages,
         limit=limit,
         offset=offset,
-        total=_toggle_int(total),
+        total=total,
     )
-
-
-def _toggle_int(v):
-    try:
-        return int(v)
-    except Exception:
-        return 0
-
 
 @app.get("/message/<msg_id>")
 def message_view(msg_id: str):
@@ -365,17 +345,14 @@ def message_view(msg_id: str):
     }
     return render_template("message.html", msg=msg)
 
-
 @app.get("/message/<msg_id>/raw.eml")
 def message_raw(msg_id: str):
     rs = db_query("SELECT mailbox, raw_eml FROM messages WHERE id = ?", (msg_id,))
     if not rs.rows:
         abort(404)
 
-    mailbox, raw_eml = rs.rows[0][0], rs.rows[0][1]
-    # raw_eml comes as bytes
-    if isinstance(raw_eml, memoryview):
-        raw_eml = raw_eml.tobytes()
+    mailbox = rs.rows[0][0]
+    raw_eml = to_bytes(rs.rows[0][1])
 
     resp = make_response(raw_eml)
     resp.headers["content-type"] = "message/rfc822"
@@ -383,10 +360,8 @@ def message_raw(msg_id: str):
     resp.headers["cache-control"] = "no-store"
     return resp
 
-
 @app.post("/message/<msg_id>/delete")
 def message_delete(msg_id: str):
-    # find mailbox for redirect
     rs = db_query("SELECT mailbox FROM messages WHERE id = ?", (msg_id,))
     if not rs.rows:
         abort(404)
@@ -394,7 +369,6 @@ def message_delete(msg_id: str):
 
     db_execute("DELETE FROM messages WHERE id = ?", (msg_id,))
     return redirect(url_for("mailbox_messages", mailbox=mailbox))
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
