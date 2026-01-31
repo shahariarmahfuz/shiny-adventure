@@ -30,8 +30,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 # -------------------------
 # Config
 # -------------------------
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-INGEST_TOKEN = os.environ.get("INGEST_TOKEN", "").strip()
+DATABASE_URL = os.environ.get("DATABASE_URL", "switchyard.proxy.rlwy.net").strip()
+INGEST_TOKEN = os.environ.get("INGEST_TOKEN", "CHANGE_THIS_TO_LONG_RANDOM_SECRET").strip()
 
 # Optional: protect UI with token (no login system)
 UI_TOKEN = os.environ.get("UI_TOKEN", "").strip()
