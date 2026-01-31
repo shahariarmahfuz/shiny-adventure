@@ -4,7 +4,6 @@ import threading
 import uuid
 import asyncio
 import secrets
-import string
 from datetime import datetime, timezone
 from functools import wraps
 from urllib.parse import urlparse, parse_qs, unquote
@@ -42,11 +41,11 @@ INGEST_TOKEN = "CHANGE_THIS_TO_LONG_RANDOM_SECRET"  # <-- Worker -> Backend shar
 
 EMAIL_DOMAIN = "xneko.xyz"  # <-- আপনার Cloudflare domain (example.com)
 
-MAILBOX_REGEX = r"^[a-z0-9]{6,20}$"  # local-part random হবে
-MAILBOX_RANDOM_LEN = 10
+MAILBOX_REGEX = r"^[a-z]+[0-9]{2,4}$"  # friendly words + numbers
+MAILBOX_RANDOM_LEN = 0
 
 # One-time password policy
-GENERATED_PASSWORD_LEN = 18  # strong
+GENERATED_PASSWORD_LEN = 18  # retained for compatibility
 
 FLASK_SECRET_KEY = "CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_VALUE"
 ALLOW_SIGNUP = True
@@ -240,31 +239,56 @@ def maybe_parse_headers(raw_eml: bytes):
 # Random generators
 # ============================================================
 
-def random_local_part(length: int) -> str:
-    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+LOCAL_PART_WORDS_A = [
+    "bright",
+    "silent",
+    "lucky",
+    "swift",
+    "happy",
+    "gentle",
+    "fresh",
+    "cool",
+    "smart",
+    "brave",
+]
+LOCAL_PART_WORDS_B = [
+    "river",
+    "cloud",
+    "tiger",
+    "panda",
+    "berry",
+    "stone",
+    "leaf",
+    "eagle",
+    "sun",
+    "moon",
+]
+
+PASSWORD_WORDS = [
+    "Sunrise",
+    "Dream",
+    "River",
+    "Sky",
+    "Forest",
+    "Nova",
+    "Star",
+    "Aurora",
+    "Bliss",
+    "Pixel",
+]
+
+def random_local_part(_: int = 0) -> str:
+    word_a = secrets.choice(LOCAL_PART_WORDS_A)
+    word_b = secrets.choice(LOCAL_PART_WORDS_B)
+    digits = secrets.randbelow(900) + 100
+    return f"{word_a}{word_b}{digits}"
 
 def strong_password(length: int) -> str:
-    # strong: mix of sets, guaranteed at least 1 from each
-    if length < 12:
-        length = 12
-
-    lowers = string.ascii_lowercase
-    uppers = string.ascii_uppercase
-    digits = string.digits
-    symbols = "!@#$%^&*()-_=+[]{};:,.?/"
-
-    # ensure each category at least once
-    core = [
-        secrets.choice(lowers),
-        secrets.choice(uppers),
-        secrets.choice(digits),
-        secrets.choice(symbols),
-    ]
-    all_chars = lowers + uppers + digits + symbols
-    core += [secrets.choice(all_chars) for _ in range(length - len(core))]
-    secrets.SystemRandom().shuffle(core)
-    return "".join(core)
+    word_a = secrets.choice(PASSWORD_WORDS)
+    word_b = secrets.choice(PASSWORD_WORDS)
+    number = secrets.randbelow(9000) + 1000
+    symbol = secrets.choice(["@", "#", "!"])
+    return f"{word_a}{word_b}{symbol}{number}"
 
 
 # ============================================================
@@ -599,6 +623,24 @@ def account_set_authenticator(account_id: str):
     )
 
     flash("Authenticator set successfully. Current code will update in real-time.", "ok")
+    return redirect(url_for("account_view", account_id=account_id))
+
+@app.post("/accounts/<account_id>/authenticator/delete")
+@login_required
+def account_delete_authenticator(account_id: str):
+    uid = current_user_id()
+    _ = get_account_owned(uid, account_id)
+
+    db_execute(
+        """
+        UPDATE accounts
+        SET totp_secret = NULL, totp_issuer = NULL, totp_label = NULL
+        WHERE id = ? AND user_id = ?
+        """,
+        (account_id, uid),
+    )
+
+    flash("Authenticator removed. You can add a new one anytime.", "ok")
     return redirect(url_for("account_view", account_id=account_id))
 
 @app.get("/accounts/<account_id>/totp.json")
