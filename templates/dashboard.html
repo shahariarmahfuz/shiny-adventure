@@ -2,40 +2,48 @@
 {% block content %}
   <h1>Dashboard</h1>
 
-  <div class="row">
-    <form method="post" action="{{ url_for('create_mailbox') }}">
-      <button class="btn btn-primary" type="submit">➕ Create new email</button>
+  <div class="card" style="margin-bottom:14px;">
+    <h2 style="margin:0 0 10px 0; font-size:16px;">Create new email</h2>
+    <form method="post" action="{{ url_for('create_account') }}">
+      <label>Gmail address (user will link authenticator)</label>
+      <input class="input" name="gmail" type="email" placeholder="example@gmail.com" required />
+      <button class="btn btn-primary" type="submit">➕ Create</button>
     </form>
+    <p class="muted" style="margin-top:10px;">
+      After creation, open the account page to copy: Gmail, generated email, password, and authenticator code.
+    </p>
   </div>
 
-  {% if not mailboxes %}
-    <p class="muted">No email addresses yet. Click “Create new email”.</p>
+  {% if not accounts %}
+    <p class="muted">No emails yet. Create one above.</p>
   {% else %}
     <div class="card">
       <table class="table">
         <thead>
           <tr>
-            <th>Email</th>
+            <th>Gmail</th>
+            <th>Generated Email</th>
+            <th>Authenticator</th>
             <th>Messages</th>
             <th>Last received</th>
-            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {% for m in mailboxes %}
+          {% for a in accounts %}
             <tr>
+              <td class="mono">{{ a.gmail }}</td>
               <td class="mono">
-                <a href="{{ url_for('view_mailbox', mailbox_id=m.id) }}">{{ m.address }}</a>
+                <a href="{{ url_for('account_view', account_id=a.id) }}">{{ a.email }}</a>
               </td>
-              <td>{{ m.msg_count }}</td>
-              <td><code>{{ m.last_received or "-" }}</code></td>
               <td>
-                <form method="post" action="{{ url_for('delete_mailbox', mailbox_id=m.id) }}" style="display:inline;">
-                  <button class="btn btn-danger" type="submit" onclick="return confirm('Delete this mailbox and all messages?')">
-                    Delete
-                  </button>
-                </form>
+                {% if a.has_totp %}
+                  ✅ enabled
+                {% else %}
+                  ⚠️ not set
+                {% endif %}
               </td>
+              <td>{{ a.msg_count }}</td>
+              <td><code>{{ a.last_received or "-" }}</code></td>
             </tr>
           {% endfor %}
         </tbody>
