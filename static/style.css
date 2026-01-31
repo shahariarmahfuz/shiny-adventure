@@ -5,10 +5,9 @@ body { margin: 0; background: #fafafa; color: #111; }
 .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { font-weight: 800; text-decoration: none; color: #111; }
 .nav a { text-decoration: none; color: #333; margin-left: 12px; }
-
 h1 { margin: 18px 0; font-size: 22px; }
-.card { background: #fff; border: 1px solid #eaeaea; border-radius: 12px; padding: 14px; }
 
+.card { background: #fff; border: 1px solid #eaeaea; border-radius: 12px; padding: 14px; }
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
 .table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #666; }
@@ -18,9 +17,13 @@ code { background: #f2f2f2; padding: 2px 6px; border-radius: 8px; }
 
 .btn { display: inline-block; padding: 8px 12px; border: 1px solid #ddd; background: #fff; border-radius: 10px; text-decoration: none; color: #111; cursor: pointer; }
 .btn:hover { background: #f7f7f7; }
+.btn-primary { border-color: #cbd5ff; background: #eef2ff; }
 .btn-danger { border-color: #f3b6b6; background: #fff5f5; }
 
-.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 10px; margin: 6px 0 12px; }
+label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .muted { color: #666; font-size: 12px; }
 .pager { margin-top: 14px; display: flex; gap: 10px; }
 .danger { margin-top: 14px; }
@@ -28,5 +31,10 @@ code { background: #f2f2f2; padding: 2px 6px; border-radius: 8px; }
 .kv { display: grid; grid-template-columns: 160px 1fr; gap: 10px 12px; }
 .k { color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
 .v { font-size: 14px; }
+
+.flash-wrap { margin: 12px 0; display: grid; gap: 8px; }
+.flash { padding: 10px 12px; border-radius: 12px; border: 1px solid #eaeaea; background: #fff; }
+.flash-ok { border-color: #bde5c8; background: #f0fff4; }
+.flash-error { border-color: #f3b6b6; background: #fff5f5; }
 
 .footer { margin-top: 30px; padding: 18px 0; border-top: 1px solid #eaeaea; color: #666; font-size: 12px; }
