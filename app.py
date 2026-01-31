@@ -29,7 +29,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # ============================================================
 
 # Turso DB
-TURSO_DB_URL = "https//dash-tolaramstudent.aws-ap-south-1.turso.io"
+TURSO_DB_URL = "https://dash-tolaramstudent.aws-ap-south-1.turso.io"
 TURSO_AUTH_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Njk4NzEyOTQsImlkIjoiZmZhYTFlZWUtOTE2OC00NmZjLWJjYmYtOTRkNTM2NmRmZjIwIiwicmlkIjoiMDlmZGRjYmItOGRiMC00NDY0LTliMDctM2I5OWJlMjhlZmFmIn0.m4PAj1Qkamoo_QBMILJO04jGaFbRJdHaQ9nLkxuzIvPWylHH9OK1DrLJcjkPEXatttyuv9B73K13pmSYGjX7Aw"  # <-- আপনার Turso JWT token বসান
 
 # Worker -> Backend shared secret
