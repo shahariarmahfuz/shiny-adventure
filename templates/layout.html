@@ -1,31 +1,301 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ title or "Inbox" }}</title>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    
+    <style>
+      /* --- Base Styles --- */
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f9fafb; /* Light body background */
+        color: #24292f;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh; /* Footer will stick to bottom */
+      }
+
+      /* --- Header Design --- */
+      header {
+        background-color: #ffffff;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        border-bottom: 1px solid #d0d7de;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      /* Menu Button */
+      .menu-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #57606a;
+        border-radius: 6px;
+      }
+      .menu-btn:hover { background-color: #f3f4f6; }
+      .menu-btn svg { width: 24px; height: 24px; }
+
+      /* Header Logo */
+      .header-logo { height: 32px; width: auto; display: block; }
+
+      /* --- Sidebar Design --- */
+      .sidenav {
+        height: 100%;
+        width: 240px;
+        position: fixed;
+        z-index: 20;
+        top: 0;
+        left: 0;
+        background-color: #ffffff;
+        border-right: 1px solid #d0d7de;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        will-change: transform;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 8px 24px rgba(140,149,159,0.2);
+      }
+      .sidenav.open { transform: translateX(0); }
+
+      /* Overlay */
+      #overlay {
+        position: fixed;
+        display: none;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0,0,0,0.4);
+        z-index: 15;
+        backdrop-filter: blur(2px);
+      }
+
+      /* User Profile */
+      .user-profile {
+        padding: 20px;
+        background-color: #f6f8fa;
+        border-bottom: 1px solid #d0d7de;
+        display: flex;
+        align-items: center;
+        position: relative;
+      }
+      .user-avatar {
+        width: 32px;
+        height: 32px;
+        background-color: #eaeef2;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #57606a;
+        margin-right: 12px;
+        border: 1px solid #d0d7de;
+      }
+      .user-info { display: flex; flex-direction: column; overflow: hidden; }
+      .welcome-lbl { font-size: 10px; color: #57606a; font-weight: 600; text-transform: uppercase; }
+      .user-name { font-size: 13px; font-weight: 600; color: #24292f; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;}
+
+      .sidenav .closebtn {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        font-size: 20px;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #57606a;
+        background: transparent;
+        border-radius: 6px;
+        text-decoration: none;
+        transition: 0.2s;
+        line-height: 1;
+      }
+      .sidenav .closebtn:hover { background-color: #eaeef2; color: #cf222e; }
+
+      .sidenav a.nav-link {
+        margin: 4px 8px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 14px;
+        color: #24292f;
+        display: flex;
+        align-items: center;
+        transition: 0.2s;
+      }
+      .sidenav a.nav-link span { margin-left: 10px; }
+      .sidenav a.nav-link svg { width: 18px; height: 18px; color: #57606a; }
+      .sidenav a.nav-link:hover { background-color: #f3f4f6; }
+      
+      .logout-section { margin-top: auto; border-top: 1px solid #d0d7de; padding: 12px 8px; }
+      .logout-link { color: #cf222e !important; }
+      .logout-link svg { color: #cf222e !important; }
+      .logout-link:hover { background-color: #ffebe9 !important; }
+
+      #main { padding: 32px; max-width: 1012px; margin: 0 auto; flex: 1; width: 100%; box-sizing: border-box; }
+
+      .flash-wrap { margin-bottom: 24px; }
+      .flash { padding: 16px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; border: 1px solid transparent; }
+      .flash-success { background-color: #dafbe1; color: #1a7f37; border-color: #4ac26b4d; }
+      .flash-error { background-color: #ffebe9; color: #cf222e; border-color: #ff81824d; }
+
+      /* =========================================
+       WHITE MINIMAL FOOTER (WITH SMALL LOGO)
+       =========================================
+      */
+      .footer {
+        background-color: #ffffff; /* White Background */
+        color: #57606a; /* Dark Gray Text */
+        padding: 40px 20px;
+        margin-top: auto;
+        font-size: 12px;
+        border-top: 1px solid #d0d7de; /* Light Border */
+      }
+
+      .footer-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+      }
+
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 24px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .footer-links a {
+        color: #57606a;
+        text-decoration: none;
+        transition: color 0.2s ease;
+      }
+
+      .footer-links a:hover {
+        color: #0969da; /* Blue hover */
+        text-decoration: underline;
+      }
+
+      .privacy-line {
+        color: #57606a;
+        text-align: center;
+      }
+      .privacy-line a {
+         color: #57606a;
+         text-decoration: none;
+      }
+      .privacy-line a:hover {
+        color: #0969da;
+        text-decoration: underline;
+      }
+
+      .footer-bottom {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      /* SMALL FOOTER LOGO STYLE */
+      .footer-logo-small {
+        height: 24px; /* Small Logo Size */
+        width: auto;
+        opacity: 0.8; /* Slightly muted to blend in */
+        transition: opacity 0.2s;
+      }
+      
+      .footer-bottom:hover .footer-logo-small {
+        opacity: 1; /* Full visibility on hover */
+      }
+
+    </style>
   </head>
   <body>
-    <header class="header">
-      <div class="container header-inner">
-        <a class="brand" href="{{ url_for('dashboard') }}">📥 Inbox</a>
-        <nav class="nav">
+
+    <div id="overlay" onclick="closeNav()"></div>
+
+    <div id="mySidenav" class="sidenav">
+      <div class="user-profile">
+        <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
+        <div class="user-avatar">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:18px; height:18px;">
+            <path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="user-info">
           {% if session.get("uid") %}
-            <span class="muted">{{ session.get("email") }}</span>
-            <form method="post" action="{{ url_for('logout') }}" style="display:inline;">
-              <button class="btn" type="submit">Logout</button>
-            </form>
+            <span class="welcome-lbl">Account</span>
+            <span class="user-name">{{ session.get("email") }}</span>
           {% else %}
-            <a href="{{ url_for('login') }}">Login</a>
-            <a href="{{ url_for('signup') }}">Signup</a>
+            <span class="welcome-lbl">Guest</span>
+            <span class="user-name">Please Login</span>
           {% endif %}
-        </nav>
+        </div>
       </div>
+
+      <a href="{{ url_for('dashboard') }}" class="nav-link">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>
+        <span>Inbox</span>
+      </a>
+
+      {% if session.get("uid") %}
+        <a href="#" class="nav-link">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          <span>Settings</span>
+        </a>
+        <div class="logout-section">
+          <form id="logout-form" action="{{ url_for('logout') }}" method="post" style="display: none;"></form>
+          <a onclick="document.getElementById('logout-form').submit();" class="nav-link logout-link">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" /></svg>
+            <span>Log Out</span>
+          </a>
+        </div>
+      {% else %}
+        <a href="{{ url_for('login') }}" class="nav-link">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" /></svg>
+          <span>Login</span>
+        </a>
+        <a href="{{ url_for('signup') }}" class="nav-link">
+           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" /></svg>
+           <span>Signup</span>
+        </a>
+      {% endif %}
+    </div>
+
+    <header>
+      <button class="menu-btn" onclick="openNav()">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" /></svg>
+      </button>
+      <a href="{{ url_for('dashboard') }}">
+        <img src="https://i.postimg.cc/Gmf4R2yL/IMG-20260201-113136.png" alt="Logo" class="header-logo">
+      </a>
     </header>
 
-    <main class="container">
+    <main id="main">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <div class="flash-wrap">
@@ -40,9 +310,39 @@
     </main>
 
     <footer class="footer">
-      <div class="container">
-        <span>Worker → /ingest → Turso | user-owned emails + authenticator</span>
+      <div class="footer-container">
+        
+        <ul class="footer-links">
+          <li><a href="#">Terms</a></li>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Docs</a></li>
+          <li><a href="#">Security</a></li>
+          <li><a href="#">Status</a></li>
+          <li><a href="#">Manage cookies</a></li>
+        </ul>
+
+        <div class="privacy-line">
+           <a href="#">Do not share my personal information</a>
+        </div>
+
+        <div class="footer-bottom">
+          <img src="https://i.postimg.cc/Gmf4R2yL/IMG-20260201-113136.png" alt="Logo" class="footer-logo-small">
+          <span>&copy; 2026 Your Company, Inc.</span>
+        </div>
+
       </div>
     </footer>
+    <script>
+      function openNav() {
+        document.getElementById("mySidenav").classList.add("open");
+        document.getElementById("overlay").style.display = "block";
+      }
+
+      function closeNav() {
+        document.getElementById("mySidenav").classList.remove("open");
+        document.getElementById("overlay").style.display = "none";
+      }
+    </script>
+
   </body>
 </html>
