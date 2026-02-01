@@ -10,7 +10,6 @@
     margin-bottom: 24px;
   }
 
-  /* Create Card (Top Section) */
   .create-card {
     background: #ffffff;
     border: 1px solid #e5e7eb;
@@ -20,226 +19,193 @@
     margin-bottom: 24px;
   }
 
-  /* Form Elements */
-  .form-label { display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px; }
-  
+  .form-label { font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 8px; display:block; }
+
   .input {
-    width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px;
-    font-size: 14px; outline: none; box-sizing: border-box; transition: border-color 0.2s;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
   }
-  .input:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.1); }
 
   .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 10px 16px; border-radius: 6px; font-size: 14px; font-weight: 500;
-    cursor: pointer; border: none; transition: background-color 0.2s;
-  }
-  .btn-primary { background-color: #0969da; color: white; width: 100%; margin-top: 10px; }
-  .btn-primary:hover { background-color: #0a58ca; }
-  
-  @media (min-width: 600px) {
-    .btn-primary { width: auto; margin-top: 0; margin-left: 8px; }
-    .input { width: auto; min-width: 300px; }
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
   }
 
-  .muted-text { font-size: 13px; color: #6b7280; margin-top: 12px; line-height: 1.5; }
+  .btn-primary { background:#0969da; color:#fff; }
 
-  /* --- Table / Grid Styles --- */
-  .table-wrapper { width: 100%; }
-  .table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  
-  /* Desktop Headers */
+  .muted-text { font-size:13px; color:#6b7280; margin-top:10px; }
+
+  /* --- TABLE --- */
+  .table { width:100%; border-collapse:collapse; font-size:14px; }
   .table th {
-    text-align: left; padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
-    color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase;
+    text-align:left;
+    padding:12px;
+    border-bottom:1px solid #e5e7eb;
+    color:#6b7280;
+    font-size:12px;
+    text-transform:uppercase;
   }
-  
-  .table td { padding: 16px; border-bottom: 1px solid #f3f4f6; color: #1f2937; vertical-align: middle; }
-  .mono { font-family: ui-monospace, monospace; font-size: 13px; color: #0969da; word-break: break-all; }
 
-  /* Badges & Icons */
-  .status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-  .status-enabled { background-color: #dafbe1; color: #1a7f37; }
-  .status-warning { background-color: #fff8c5; color: #9a6700; }
-  
-  .msg-count { background: #f3f4f6; color: #1f2937; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 12px; }
-  .time-text { font-size: 11px; color: #6b7280; }
-  .icon-svg { width: 14px; height: 14px; }
+  .table td {
+    padding:14px;
+    border-bottom:1px solid #f3f4f6;
+    vertical-align:top;
+  }
 
-  /* --- MOBILE OPTIMIZATION (Compact Grid) --- */
-  @media screen and (max-width: 768px) {
-    /* Hide Table Header */
-    .table thead { display: none; }
-    
-    /* Make Tbody a Grid Container */
+  .gmail { font-weight:700; color:#111827; font-size:14px; }
+  .generated { font-size:12px; color:#6b7280; word-break:break-all; }
+
+  /* --- Inline status row --- */
+  .inline-meta {
+    display:flex;
+    align-items:center;
+    gap:14px;
+    font-size:12px;
+    color:#374151;
+    margin-top:6px;
+    flex-wrap:wrap;
+  }
+
+  .meta-item {
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    white-space:nowrap;
+  }
+
+  .icon {
+    width:14px;
+    height:14px;
+  }
+
+  .active { color:#1a7f37; font-weight:600; }
+  .setup { color:#9a6700; font-weight:600; }
+
+  /* --- MOBILE --- */
+  @media (max-width:768px) {
+    .table thead { display:none; }
+
     .table tbody {
-      display: grid;
-      /* Auto-fill columns: Min width 150px (creates 2 columns on most phones) */
+      display:grid;
       grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 12px;
+      gap:12px;
     }
 
-    /* Turn Rows into Cards */
     .table tr {
-      display: flex;
-      flex-direction: column;
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 12px;
-      height: 100%; /* Equal height cards */
-      box-sizing: border-box;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+      display:block;
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      padding:12px;
+      background:#fff;
     }
 
-    /* Cells inside the card */
     .table td {
-      display: block;
-      padding: 4px 0;
-      border: none;
-      text-align: left;
-    }
-
-    /* Specific Styling for Compactness */
-    
-    /* Gmail (Title) */
-    .table td:nth-child(1) {
-      font-weight: 700;
-      font-size: 13px;
-      margin-bottom: 4px;
-      color: #111827;
-      line-height: 1.3;
-    }
-
-    /* Generated Email (Subtitle) */
-    .table td:nth-child(2) {
-      font-size: 12px;
-      color: #6b7280;
-      margin-bottom: 8px;
-    }
-
-    /* Status (Badge) */
-    .table td:nth-child(3) {
-      margin-top: auto; /* Push to bottom */
-      padding-top: 8px;
-    }
-
-    /* Messages & Time (Footer) */
-    .table td:nth-child(4),
-    .table td:nth-child(5) {
-      display: inline-block;
-      width: auto;
-      padding-top: 4px;
-    }
-    
-    /* Keep Msg Count and Time on same visual line if possible, or stacked compactly */
-    .table td:nth-child(5) {
-      float: right;
+      border:none;
+      padding:0;
     }
   }
 </style>
 
-  <h1 class="page-title">Dashboard</h1>
+<h1 class="page-title">Dashboard</h1>
 
-  <div class="create-card">
-    <h2 style="margin:0 0 12px 0; font-size:16px; font-weight:600;">Create new email</h2>
-    <form method="post" action="{{ url_for('create_account') }}">
-      <div style="display:flex; flex-wrap:wrap; align-items:flex-end;">
-        <div style="flex:1;">
-          <label class="form-label">Gmail address</label>
-          <input class="input" name="gmail" type="email" placeholder="user@gmail.com" required />
-        </div>
-        <button class="btn btn-primary" type="submit">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:18px; height:18px;">
-            <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"></path>
-          </svg>
-          Create
-        </button>
-      </div>
-    </form>
-    <p class="muted-text">
-      Link generated email & authenticator code after creation.
-    </p>
+<div class="create-card">
+  <h2 style="font-size:16px;margin-bottom:10px;">Create new email</h2>
+  <form method="post" action="{{ url_for('create_account') }}">
+    <label class="form-label">Gmail address</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <input class="input" name="gmail" type="email" required placeholder="user@gmail.com">
+      <button class="btn btn-primary" type="submit">Create</button>
+    </div>
+  </form>
+  <p class="muted-text">Link generated email & authenticator code after creation.</p>
+</div>
+
+{% if not accounts %}
+  <div style="padding:40px;text-align:center;color:#6b7280;border:1px solid #e5e7eb;border-radius:12px;background:#fff;">
+    No emails found.
   </div>
+{% else %}
+<table class="table">
+  <thead>
+    <tr>
+      <th>Email</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for a in accounts %}
+    <tr>
+      <td>
+        <div class="gmail">{{ a.gmail }}</div>
+        <div class="generated">
+          <a href="{{ url_for('account_view', account_id=a.id) }}" style="color:#6b7280;text-decoration:none;">
+            {{ a.email }}
+          </a>
+        </div>
 
-  {% if not accounts %}
-    <div style="text-align:center; padding: 40px; color:#6b7280; background:#fff; border-radius:12px; border:1px solid #e5e7eb;">
-      <p>No emails found.</p>
-    </div>
-  {% else %}
-    <div class="table-wrapper">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Gmail</th>
-            <th>Generated Email</th>
-            <th>Status</th>
-            <th>Msgs</th>
-            <th>Received</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for a in accounts %}
-            <tr>
-              <td>
-                <span class="mono" style="color:#111827;">{{ a.gmail }}</span>
-              </td>
-              
-              <td>
-                <a href="{{ url_for('account_view', account_id=a.id) }}" class="mono" style="text-decoration:none; color:#6b7280;">
-                  {{ a.email }}
-                </a>
-              </td>
-              
-              <td>
-                {% if a.has_totp %}
-                  <span class="status-badge status-enabled">
-                    <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clip-rule="evenodd" /></svg>
-                    Active
-                  </span>
-                {% else %}
-                  <span class="status-badge status-warning">
-                    <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg>
-                    Setup
-                  </span>
-                {% endif %}
-              </td>
-              
-              <td>
-                <span class="msg-count">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:10px; height:10px; margin-right:2px;"><path d="M1.5 8.67v8.58a3 3 0 003 3h15a3 3 0 003-3V8.67l-8.928 5.493a3 3 0 01-3.144 0L1.5 8.67z" /><path d="M22.5 6.908V6.75a3 3 0 00-3-3h-15a3 3 0 00-3 3v.158l9.714 5.978a1.5 1.5 0 001.572 0L22.5 6.908z" /></svg>
-                  {{ a.msg_count }}
-                </span>
-              </td>
-              
-              <td>
-                <span class="time-text bd-time" data-time="{{ a.last_received or '' }}">-</span>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% endif %}
+        <div class="inline-meta">
+          <!-- Status -->
+          <span class="meta-item">
+            {% if a.has_totp %}
+              <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+              </svg>
+              <span class="active">Active</span>
+            {% else %}
+              <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+              </svg>
+              <span class="setup">Setup</span>
+            {% endif %}
+          </span>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const timeElements = document.querySelectorAll('.bd-time');
-      timeElements.forEach(el => {
-        const rawTime = el.getAttribute('data-time');
-        if (rawTime && rawTime !== 'None') {
-          const date = new Date(rawTime);
-          if (!isNaN(date)) {
-            // Short Format for Mobile Cards (e.g., "Feb 1, 5:30 PM")
-            el.textContent = date.toLocaleString('en-BD', {
-              timeZone: 'Asia/Dhaka',
-              month: 'short', day: 'numeric',
-              hour: 'numeric', minute: '2-digit', hour12: true
-            });
-          } else { el.textContent = rawTime; }
-        }
+          <!-- Messages -->
+          <span class="meta-item">
+            <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75"/>
+            </svg>
+            {{ a.msg_count }}
+          </span>
+
+          <!-- Time -->
+          <span class="meta-item">
+            <svg class="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 2.994v2.25m10.5-2.25v2.25m-14.252 13.5V7.491a2.25 2.25 0 0 1 2.25-2.25h13.5a2.25 2.25 0 0 1 2.25 2.25v11.251"/>
+            </svg>
+            <span class="bd-time" data-time="{{ a.last_received or '' }}">-</span>
+          </span>
+        </div>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.bd-time').forEach(el => {
+    const raw = el.dataset.time;
+    if (!raw) return;
+    const d = new Date(raw);
+    if (!isNaN(d)) {
+      el.textContent = d.toLocaleString('en-BD', {
+        timeZone:'Asia/Dhaka',
+        month:'short', day:'numeric',
+        hour:'numeric', minute:'2-digit', hour12:true
       });
-    });
-  </script>
+    }
+  });
+});
+</script>
 
 {% endblock %}
