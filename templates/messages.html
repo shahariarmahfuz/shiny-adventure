@@ -1,49 +1,228 @@
 {% extends "layout.html" %}
-{% block content %}
-  <h1>Mailbox: <code>{{ mailbox }}</code></h1>
 
-  <p class="row">
-    <a class="btn" href="{{ url_for('mailboxes') }}">← Back</a>
-    <span class="muted">{{ total }} total</span>
-  </p>
+{% block content %}
+<style>
+  /* --- Page Styles --- */
+  .page-header {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  @media (min-width: 600px) {
+    .page-header {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+  }
+
+  .page-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+    word-break: break-all;
+  }
+
+  .action-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 6px; font-size: 14px; font-weight: 500;
+    text-decoration: none; border: 1px solid #d1d5db; background: #fff; color: #374151;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: #f3f4f6; color: #111827; }
+  
+  .badge {
+    background: #f3f4f6; color: #4b5563; padding: 4px 10px;
+    border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+
+  .icon-svg { width: 16px; height: 16px; stroke-width: 1.8; }
+
+  /* --- Table Styles --- */
+  .card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden; /* For rounded corners on table */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    margin-bottom: 24px;
+  }
+
+  .table-wrapper { width: 100%; overflow-x: auto; }
+  .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  
+  .table th {
+    text-align: left; padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb; color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase;
+  }
+  
+  .table td { padding: 16px; border-bottom: 1px solid #f3f4f6; color: #1f2937; vertical-align: middle; }
+  .table tr:last-child td { border-bottom: none; }
+
+  /* Typography inside table */
+  .subject-link { color: #0969da; font-weight: 600; text-decoration: none; }
+  .subject-link:hover { text-decoration: underline; }
+  
+  .sender-text { font-family: ui-monospace, monospace; color: #111827; }
+  .size-badge { font-size: 11px; background: #e5e7eb; padding: 2px 6px; border-radius: 4px; color: #4b5563; }
+  .time-text { color: #6b7280; font-size: 13px; white-space: nowrap; }
+
+  /* --- Pagination --- */
+  .pager {
+    display: flex; justify-content: center; gap: 10px; margin-top: 20px;
+  }
+
+  /* --- MOBILE OPTIMIZATION --- */
+  @media screen and (max-width: 768px) {
+    .table thead { display: none; }
+    
+    .table tbody { display: flex; flex-direction: column; }
+    
+    .table tr {
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      border-bottom: 1px solid #e5e7eb;
+      gap: 6px;
+    }
+    .table tr:last-child { border-bottom: none; }
+    .table td { padding: 0; border: none; }
+
+    /* Custom Mobile Order & Style */
+    
+    /* 1. Subject (Top, Big) */
+    .table td:nth-child(3) { order: 1; margin-bottom: 4px; font-size: 15px; }
+    
+    /* 2. Sender (Middle) */
+    .table td:nth-child(2) { order: 2; color: #4b5563; font-size: 13px; margin-bottom: 8px; }
+    
+    /* 3. Footer Row (Time + Size) */
+    .footer-row-mobile {
+      display: flex; justify-content: space-between; align-items: center;
+      order: 3; width: 100%; margin-top: 4px;
+    }
+    
+    /* Hide original cells for time/size and use custom structure via JS or CSS tricks, 
+       but here we just re-order the existing TDs. 
+       Since 1 & 4 are Time & Size, let's style them to sit side-by-side. */
+       
+    .table td:nth-child(1) { order: 3; font-size: 12px; color: #6b7280; flex: 1; } /* Time */
+    .table td:nth-child(4) { order: 3; text-align: right; } /* Size */
+  }
+</style>
+
+  <div class="page-header">
+    <h1 class="page-title">
+      Mailbox: <code style="color:#0969da; font-size: 0.9em;">{{ mailbox }}</code>
+    </h1>
+    <div class="action-bar">
+      <span class="badge">{{ total }} Messages</span>
+      <a class="btn" href="{{ url_for('mailboxes') }}">
+        <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+        </svg>
+        Back
+      </a>
+    </div>
+  </div>
 
   {% if not messages %}
-    <p>No messages for this mailbox.</p>
+    <div style="text-align:center; padding: 60px 20px; background:#fff; border-radius:12px; border:1px solid #e5e7eb; color: #6b7280;">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:48px; height:48px; margin-bottom:12px; opacity:0.3;">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+      </svg>
+      <p style="font-size:16px;">No messages in this mailbox yet.</p>
+    </div>
   {% else %}
     <div class="card">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Received</th>
-            <th>Envelope From</th>
-            <th>Subject</th>
-            <th>Size</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for msg in messages %}
+      <div class="table-wrapper">
+        <table class="table">
+          <thead>
             <tr>
-              <td><code>{{ msg.received_at }}</code></td>
-              <td class="mono">{{ msg.envelope_from }}</td>
-              <td>
-                <a href="{{ url_for('message_view', msg_id=msg.id) }}">
-                  {{ msg.subject or "(no subject)" }}
-                </a>
-              </td>
-              <td>{{ msg.raw_size }} B</td>
+              <th>Received</th>
+              <th>From</th>
+              <th>Subject</th>
+              <th>Size</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for msg in messages %}
+              <tr>
+                <td>
+                  <span class="time-text bd-time" data-time="{{ msg.received_at }}">-</span>
+                </td>
+                
+                <td>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <svg class="icon-svg" style="color:#9ca3af;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                    </svg>
+                    <span class="sender-text">{{ msg.envelope_from }}</span>
+                  </div>
+                </td>
+                
+                <td>
+                  <a class="subject-link" href="{{ url_for('message_view', msg_id=msg.id) }}">
+                    {{ msg.subject or "(no subject)" }}
+                  </a>
+                </td>
+                
+                <td>
+                  <span class="size-badge">{{ msg.raw_size }} B</span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   {% endif %}
 
   <div class="pager">
     {% if offset - limit >= 0 %}
-      <a class="btn" href="{{ url_for('mailbox_messages', mailbox=mailbox, limit=limit, offset=offset-limit) }}">Newer</a>
+      <a class="btn" href="{{ url_for('mailbox_messages', mailbox=mailbox, limit=limit, offset=offset-limit) }}">
+        <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+        </svg>
+        Newer
+      </a>
     {% endif %}
     {% if offset + limit < total %}
-      <a class="btn" href="{{ url_for('mailbox_messages', mailbox=mailbox, limit=limit, offset=offset+limit) }}">Older</a>
+      <a class="btn" href="{{ url_for('mailbox_messages', mailbox=mailbox, limit=limit, offset=offset+limit) }}">
+        Older
+        <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+        </svg>
+      </a>
     {% endif %}
   </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const timeElements = document.querySelectorAll('.bd-time');
+      timeElements.forEach(el => {
+        const rawTime = el.getAttribute('data-time');
+        if (rawTime && rawTime !== 'None') {
+          const date = new Date(rawTime);
+          if (!isNaN(date)) {
+            // "Feb 1, 12:30 PM" format
+            el.textContent = date.toLocaleString('en-BD', {
+              timeZone: 'Asia/Dhaka',
+              month: 'short', day: 'numeric',
+              hour: 'numeric', minute: '2-digit', hour12: true
+            });
+          } else { el.textContent = rawTime; }
+        }
+      });
+    });
+  </script>
+
 {% endblock %}
